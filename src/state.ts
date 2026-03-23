@@ -10,6 +10,7 @@ import { messages } from './lib/messages'
 import { normalizeName } from './lib/names'
 import { setupWebRTC } from './logic/connection'
 import { defaultAudioConstraints, defaultVideoConstraints, getDevices, getDisplayMedia, getUserMedia, setAudioTracks } from './logic/stream'
+import { isProcessing, startProcessing, stopProcessing, updateOptions } from './logic/video-processor'
 
 const log = Logger('app:state')
 
@@ -99,8 +100,8 @@ export const state = reactive({
   bandwidth: false,
   fill: true,
 
-  backgroundMode: '',
-  backgroundImageURL: null,
+  backgroundMode: localStorage.getItem('backgroundMode') || '',
+  backgroundImageURL: localStorage.getItem('backgroundImageURL') || null,
   backgroundAuthor: '',
   backgroundURL: '',
 
@@ -137,8 +138,6 @@ export const state = reactive({
 
   original: isOriginalBriefing,
 
-  // Future
-  blur: false,
   subscribe: false,
 })
 
@@ -162,21 +161,63 @@ function updateStream() {
   }
 }
 
+let rawCameraStream: MediaStream | null = null
+
 messages.on('switchMedia', switchMedia)
+
+messages.on('updateBackgroundMode', async () => {
+  if (!isProcessing() && !state.backgroundMode)
+    return
+  if (!state.backgroundMode) {
+    // Turning off: revert to raw stream
+    stopProcessing()
+    if (rawCameraStream) {
+      state.stream = rawCameraStream
+      updateStream()
+      messages.emit('setLocalStream', state.stream)
+    }
+  }
+  else if (isProcessing()) {
+    // Switching between blur <-> image
+    await updateOptions({
+      mode: state.backgroundMode as 'blur' | 'image',
+      backgroundImageDataURL: state.backgroundImageURL,
+    })
+  }
+  else if (rawCameraStream) {
+    // Turning on from off
+    const processed = await startProcessing(rawCameraStream, {
+      mode: state.backgroundMode as 'blur' | 'image',
+      backgroundImageDataURL: state.backgroundImageURL,
+    })
+    state.stream = processed
+    updateStream()
+    messages.emit('setLocalStream', state.stream)
+  }
+})
 
 async function switchMedia() {
   // See following links for detail:
   // https://github.com/holtwick/briefing/pull/131
   // https://stackoverflow.com/questions/55953038/why-is-the-ended-event-not-firing-for-this-mediastreamtrack/55960232#55960232
 
-  state.stream?.getTracks().forEach((track) => {
-    if (typeof track.stop === 'function' && track.readyState !== 'ended') {
-      track.stop()
-      // Manually emit the event, some webview implement doesn't fire it
-      const trackStoppedEvt = new MediaStreamTrackEvent('ended', { track })
-      track.dispatchEvent(trackStoppedEvt)
-    }
-  })
+  // Stop tracks on both raw and processed streams
+  const streamsToStop = [state.stream, rawCameraStream].filter(Boolean)
+  const stoppedIds = new Set<string>()
+  for (const s of streamsToStop) {
+    s?.getTracks().forEach((track) => {
+      if (stoppedIds.has(track.id))
+        return
+      stoppedIds.add(track.id)
+      if (typeof track.stop === 'function' && track.readyState !== 'ended') {
+        track.stop()
+        // Manually emit the event, some webview implement doesn't fire it
+        const trackStoppedEvt = new MediaStreamTrackEvent('ended', { track })
+        track.dispatchEvent(trackStoppedEvt)
+      }
+    })
+  }
+  stopProcessing()
 
   const audio = {
     ...defaultAudioConstraints,
@@ -242,6 +283,23 @@ async function switchMedia() {
     log.error('Media error:', media.error)
   }
 
+  // Stop any prior processing
+  stopProcessing()
+  rawCameraStream = stream
+
+  if (stream && state.backgroundMode && !showsDesktop) {
+    try {
+      stream = await startProcessing(stream, {
+        mode: state.backgroundMode as 'blur' | 'image',
+        backgroundImageDataURL: state.backgroundImageURL,
+      })
+    }
+    catch (err) {
+      log.error('Failed to start video processing', err)
+      // Fall back to raw stream
+    }
+  }
+
   state.stream = stream
   updateStream()
   messages.emit('setLocalStream', state.stream)
@@ -262,9 +320,9 @@ export async function setup() {
       return
     }
 
-    const { stream, error } = await getUserMedia()
+    const { stream: rawStream, error } = await getUserMedia()
     state.error = error
-    if (stream) {
+    if (rawStream) {
       // Safari getDevices only works immediately after getUserMedia (bug)
       state.devices = ((await getDevices()) || []).map((d) => {
         log('found device', d)
@@ -279,7 +337,22 @@ export async function setup() {
       log.error('Media error', error)
     }
 
-    state.stream = stream
+    rawCameraStream = rawStream
+    let activeStream: MediaStream | undefined = rawStream
+
+    if (rawStream && state.backgroundMode) {
+      try {
+        activeStream = await startProcessing(rawStream, {
+          mode: state.backgroundMode as 'blur' | 'image',
+          backgroundImageDataURL: state.backgroundImageURL,
+        })
+      }
+      catch (err) {
+        log.error('Failed to start video processing in setup', err)
+      }
+    }
+
+    state.stream = activeStream
     updateStream()
     messages.emit('setLocalStream', state.stream)
 

@@ -13,6 +13,7 @@
     "image_background": "图片背景",
     "image_tip": "您可以通过在此窗口上拖动图像文件来上传自己的背景。",
     "original_background": "原始背景",
+    "upload_image": "上传图片",
     "persist_settings": "持续设置",
     "random_image": "单击以获取另一个随机图像。",
     "sentry": "允许错误跟踪",

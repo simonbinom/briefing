@@ -13,6 +13,7 @@
     "image_background": "이미지 배경",
     "image_tip": "이미지 파일을 이 위치로 드래그해 이미지 파일을 업로드 할 수 있습니다.",
     "original_background": "기본 배경",
+    "upload_image": "이미지 업로드",
     "persist_settings": "지속 설정",
     "random_image": "랜덤으로 이미지 고르기.",
     "sentry": "버그 트래킹 허용",
