@@ -62,6 +62,7 @@ export default {
     },
     'state.backgroundMode': async function (value, prevValue) {
       await this.$nextTick()
+      localStorage.setItem('backgroundMode', value || '')
       if ((value && !prevValue) || (prevValue && !value)) {
         // Toggling on/off: full stream restart
         messages.emit('switchMedia')

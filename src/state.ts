@@ -100,8 +100,8 @@ export const state = reactive({
   bandwidth: false,
   fill: true,
 
-  backgroundMode: '',
-  backgroundImageURL: null,
+  backgroundMode: localStorage.getItem('backgroundMode') || '',
+  backgroundImageURL: localStorage.getItem('backgroundImageURL') || null,
   backgroundAuthor: '',
   backgroundURL: '',
 
