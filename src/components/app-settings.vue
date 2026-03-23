@@ -190,7 +190,7 @@ export default {
         <div v-if="state.backgroundImageURL" style="margin-bottom: 0.5rem;">
           <img :src="state.backgroundImageURL" style="max-width: 120px; border-radius: 4px;">
         </div>
-        <label class="btn btn-sm">
+        <label class="sea-button -secondary" style="cursor: pointer;">
           {{ $t('settings.upload_image') }}
           <input type="file" accept="image/*" hidden @change="onBackgroundImageUpload">
         </label>

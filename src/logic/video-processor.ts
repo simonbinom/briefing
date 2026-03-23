@@ -193,10 +193,10 @@ function renderFrame(): void {
     const frameData = tempCtx.getImageData(0, 0, width, height)
     const pixels = frameData.data
 
-    // Mask: pixel value > 0 means person, 0 means background
+    // Mask: pixel value 0 means person, non-zero means background
     for (let i = 0; i < maskData.length; i++) {
-      // Set alpha to 0 for background pixels (not person)
-      if (maskData[i] === 0)
+      // Set alpha to 0 for background pixels
+      if (maskData[i] !== 0)
         pixels[i * 4 + 3] = 0
     }
 
