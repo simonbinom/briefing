@@ -13,6 +13,7 @@
     "image_background": "Imagem de fundo",
     "image_tip": "Você pode carregar seu próprio fundo arrastando um arquivo de imagem nesta janela.",
     "original_background": "Fundo original",
+    "upload_image": "Carregar imagem",
     "persist_settings": "Configurações Persistentes",
     "random_image": "Clique para obter outra imagem aleatória.",
     "sentry": "Permitir o acompanhamento de bugs",

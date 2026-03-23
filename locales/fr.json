@@ -13,6 +13,7 @@
     "image_background": "Fond d'image",
     "image_tip": "Vous pouvez télécharger votre propre arrière-plan en faisant glisser un fichier image sur cette fenêtre.",
     "original_background": "Contexte original",
+    "upload_image": "Télécharger une image",
     "persist_settings": "Paramètres persistants",
     "random_image": "Cliquez pour obtenir une autre image aléatoire.",
     "sentry": "Permettre le suivi des bogues",

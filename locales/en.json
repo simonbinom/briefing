@@ -25,6 +25,7 @@
     "image_tip": "You can upload your own background by dragging an image file on this window.",
     "original_background": "Original background",
     "persist_settings": "Persist Settings",
+    "upload_image": "Upload image",
     "random_image": "Click to get another random image.",
     "sentry": "Allow bug tracking",
     "sentry_confirm": "Thanks for allowing bug tracking. Please confirm to reload the page now.",

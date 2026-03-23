@@ -62,10 +62,14 @@ export default {
     },
     'state.backgroundMode': async function (value, prevValue) {
       await this.$nextTick()
-
-      // If just the background mode changes, don't restart the whole thing
-      if ((value && !prevValue) || (prevValue && !value))
+      if ((value && !prevValue) || (prevValue && !value)) {
+        // Toggling on/off: full stream restart
         messages.emit('switchMedia')
+      }
+      else if (value && prevValue) {
+        // Switching between blur <-> image: just update options
+        messages.emit('updateBackgroundMode')
+      }
     },
     'state.bandwidth': async function () {
       await this.$nextTick()
@@ -83,6 +87,24 @@ export default {
     async doCheckSignal() {
       const result = await WebRTC.checkStatus() as any
       this.signalStatus = result.ok ? '✅' : '❌'
+    },
+    onBackgroundImageUpload(event: Event) {
+      const input = event.target as HTMLInputElement
+      const file = input?.files?.[0]
+      if (!file)
+        return
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const dataURL = e.target?.result as string
+        state.backgroundImageURL = dataURL
+        try {
+          localStorage.setItem('backgroundImageURL', dataURL)
+        }
+        catch (err) { /* storage full */ }
+        if (state.backgroundMode === 'image')
+          messages.emit('updateBackgroundMode')
+      }
+      reader.readAsDataURL(file)
     },
   },
 }
@@ -134,12 +156,45 @@ export default {
         {{ $t('settings.bandwidth_info') }}
       </div>
     </div>
-    <div v-if="false" class="form-group settings-group">
-      <label>
-        <input v-model="state.blur" type="checkbox" class="form-switch">
-        {{ $t('settings.blur') }}
+    <div v-if="state.deviceVideo !== 'desktop'" class="form-group settings-group">
+      <label class="form-labelx"><b>{{ $t('settings.background') }}</b></label>
+      <label class="form-radio">
+        <input
+          v-model="state.backgroundMode"
+          type="radio"
+          value=""
+        >
+        <i class="form-icon" />
+        {{ $t('settings.original_background') }}
       </label>
-      <div class="settings-info">
+      <label class="form-radio">
+        <input
+          v-model="state.backgroundMode"
+          type="radio"
+          value="blur"
+        >
+        <i class="form-icon" />
+        {{ $t('settings.blurred_background') }}
+      </label>
+      <label class="form-radio">
+        <input
+          v-model="state.backgroundMode"
+          type="radio"
+          value="image"
+        >
+        <i class="form-icon" />
+        {{ $t('settings.image_background') }}
+      </label>
+      <div v-if="state.backgroundMode === 'image'" style="margin-top: 0.5rem;">
+        <div v-if="state.backgroundImageURL" style="margin-bottom: 0.5rem;">
+          <img :src="state.backgroundImageURL" style="max-width: 120px; border-radius: 4px;">
+        </div>
+        <label class="btn btn-sm">
+          {{ $t('settings.upload_image') }}
+          <input type="file" accept="image/*" hidden @change="onBackgroundImageUpload">
+        </label>
+      </div>
+      <div v-if="state.backgroundMode" class="settings-info">
         {{ $t('settings.blur_info') }}
       </div>
     </div>
