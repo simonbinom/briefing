@@ -13,8 +13,10 @@ let animFrameId = 0
 let videoEl: HTMLVideoElement | null = null
 let outputCanvas: HTMLCanvasElement | null = null
 let tempCanvas: HTMLCanvasElement | null = null
+let maskCanvas: HTMLCanvasElement | null = null
 let outputCtx: CanvasRenderingContext2D | null = null
 let tempCtx: CanvasRenderingContext2D | null = null
+let maskCtx: CanvasRenderingContext2D | null = null
 let outputStream: MediaStream | null = null
 let backgroundImage: HTMLImageElement | null = null
 let currentOptions: VideoProcessorOptions | null = null
@@ -36,8 +38,8 @@ async function loadMediaPipe() {
       modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite',
       delegate: 'GPU',
     },
-    outputCategoryMask: true,
-    outputConfidenceMasks: false,
+    outputCategoryMask: false,
+    outputConfidenceMasks: true,
     runningMode: 'VIDEO',
   })
 
@@ -97,6 +99,12 @@ export async function startProcessing(
   tempCanvas.height = height
   tempCtx = tempCanvas.getContext('2d')!
 
+  // Mask canvas for softened segmentation mask
+  maskCanvas = document.createElement('canvas')
+  maskCanvas.width = width
+  maskCanvas.height = height
+  maskCtx = maskCanvas.getContext('2d')!
+
   // Load background image if needed
   if (options.mode === 'image' && options.backgroundImageDataURL)
     backgroundImage = await loadImage(options.backgroundImageDataURL)
@@ -130,8 +138,10 @@ export function stopProcessing(): void {
 
   outputCanvas = null
   tempCanvas = null
+  maskCanvas = null
   outputCtx = null
   tempCtx = null
+  maskCtx = null
   outputStream = null
   backgroundImage = null
   currentOptions = null
@@ -153,7 +163,7 @@ export async function updateOptions(options: VideoProcessorOptions): Promise<voi
 let lastFrameTime = 0
 
 function renderFrame(): void {
-  if (!active || !videoEl || !outputCtx || !tempCtx || !outputCanvas || !tempCanvas)
+  if (!active || !videoEl || !outputCtx || !tempCtx || !maskCtx || !outputCanvas || !tempCanvas || !maskCanvas)
     return
 
   animFrameId = requestAnimationFrame(renderFrame)
@@ -176,37 +186,50 @@ function renderFrame(): void {
   const height = outputCanvas.height
 
   try {
-    // Run segmentation
+    // Run segmentation with confidence masks for soft edges
     const result = segmenter.segmentForVideo(videoEl, now)
-    const mask = result.categoryMask
+    const masks = result.confidenceMasks
 
-    if (!mask)
+    if (!masks || masks.length === 0)
       return
 
-    const maskData = mask.getAsUint8Array()
+    // First confidence mask is the person mask (0.0 = not person, 1.0 = person)
+    const mask = masks[0]
+    const maskData = mask.getAsFloat32Array()
 
-    // Draw person-only layer on temp canvas
-    // First draw the video frame
-    tempCtx.drawImage(videoEl, 0, 0, width, height)
-
-    // Get frame pixels and apply mask
-    const frameData = tempCtx.getImageData(0, 0, width, height)
-    const pixels = frameData.data
-
-    // Mask: pixel value 0 means person, non-zero means background
+    // Build soft alpha mask on maskCanvas
+    // Use confidence values directly as alpha for natural feathered edges
+    const maskImageData = maskCtx.createImageData(width, height)
+    const maskPixels = maskImageData.data
     for (let i = 0; i < maskData.length; i++) {
-      // Set alpha to 0 for background pixels
-      if (maskData[i] !== 0)
-        pixels[i * 4 + 3] = 0
+      const confidence = maskData[i]
+      // White pixel with confidence as alpha (person = opaque, bg = transparent)
+      maskPixels[i * 4] = 255
+      maskPixels[i * 4 + 1] = 255
+      maskPixels[i * 4 + 2] = 255
+      maskPixels[i * 4 + 3] = confidence * 255
     }
+    maskCtx.putImageData(maskImageData, 0, 0)
 
-    tempCtx.putImageData(frameData, 0, 0)
+    // Feather the mask edges with a light blur for smoother transitions
+    tempCtx.save()
+    tempCtx.clearRect(0, 0, width, height)
+    tempCtx.filter = 'blur(4px)'
+    tempCtx.drawImage(maskCanvas, 0, 0)
+    tempCtx.filter = 'none'
+    tempCtx.restore()
+
+    // Draw video frame masked to person-only on tempCanvas
+    // Use destination-in to keep only the person region
+    tempCtx.globalCompositeOperation = 'source-in'
+    tempCtx.drawImage(videoEl, 0, 0, width, height)
+    tempCtx.globalCompositeOperation = 'source-over'
 
     // Draw background on output canvas
     if (currentOptions?.mode === 'blur') {
-      // Draw blurred video as background
+      // Strong gaussian blur for background
       outputCtx.save()
-      outputCtx.filter = 'blur(10px)'
+      outputCtx.filter = 'blur(20px)'
       outputCtx.drawImage(videoEl, 0, 0, width, height)
       outputCtx.restore()
     }
@@ -236,11 +259,12 @@ function renderFrame(): void {
       outputCtx.fillRect(0, 0, width, height)
     }
 
-    // Draw person layer on top
+    // Draw person layer on top of background
     outputCtx.drawImage(tempCanvas, 0, 0)
 
-    // Close the mask to free memory
-    mask.close()
+    // Close masks to free memory
+    for (const m of masks)
+      m.close()
   }
   catch (err) {
     log.warn('Frame processing error', err)
